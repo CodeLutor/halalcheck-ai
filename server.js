@@ -5,15 +5,28 @@ const PORT = process.env.PORT || 3000;
 
 app.use(express.static("public"));
 
-// Informational directory only. This is NOT a product certificate database.
+const PRODUCT_FIELDS = [
+  "code",
+  "product_name",
+  "brands",
+  "quantity",
+  "countries",
+  "ingredients_text",
+  "ingredients_text_en",
+  "image_front_url",
+  "url",
+  "labels",
+  "labels_tags",
+  "ingredients_analysis_tags"
+].join(",");
+
+// This is an informational directory, not a product certificate registry.
 const certificationBodies = [
   {
     name: "JAKIM",
     country: "Malaysia",
     website: "https://www.halal.gov.my/",
     recognitionStatus: "NOT YET VERIFIED",
-    recognitionEvidence:
-      "Check the relevant importing country's official recognition list.",
     evidenceSource: "https://www.halal.gov.my/"
   },
   {
@@ -21,8 +34,6 @@ const certificationBodies = [
     country: "Indonesia",
     website: "https://halal.go.id/",
     recognitionStatus: "NOT YET VERIFIED",
-    recognitionEvidence:
-      "Check the relevant importing country's official recognition list.",
     evidenceSource: "https://halal.go.id/"
   },
   {
@@ -30,8 +41,6 @@ const certificationBodies = [
     country: "Singapore",
     website: "https://www.muis.gov.sg/",
     recognitionStatus: "NOT YET VERIFIED",
-    recognitionEvidence:
-      "Check the relevant importing country's official recognition list.",
     evidenceSource: "https://www.muis.gov.sg/"
   },
   {
@@ -39,8 +48,6 @@ const certificationBodies = [
     country: "United States",
     website: "https://ifanca.org/",
     recognitionStatus: "NOT YET VERIFIED",
-    recognitionEvidence:
-      "Check the relevant importing country's official recognition list.",
     evidenceSource: "https://ifanca.org/"
   },
   {
@@ -48,8 +55,6 @@ const certificationBodies = [
     country: "United Kingdom",
     website: "https://halalfoodauthority.com/",
     recognitionStatus: "NOT YET VERIFIED",
-    recognitionEvidence:
-      "Check the relevant importing country's official recognition list.",
     evidenceSource: "https://halalfoodauthority.com/"
   }
 ];
@@ -57,12 +62,11 @@ const certificationBodies = [
 app.get("/api/certification-bodies", (req, res) => {
   res.json({
     note:
-      "This is an informational directory. It does not verify certification for individual products.",
+      "This directory lists certification organisations. It does not verify product-specific certificates or guarantee recognition in every country.",
     bodies: certificationBodies
   });
 });
 
-// Find ingredient terms that require attention.
 function findMatches(text, rules) {
   return rules
     .filter((rule) => rule.pattern.test(text))
@@ -74,15 +78,14 @@ function assessIngredients(ingredients) {
     return {
       status: "INSUFFICIENT INFORMATION",
       explanation:
-        "The ingredient list is missing from this database record. Halal status cannot be determined from the available ingredient data.",
+        "The ingredient list is missing from the product database. A reliable assessment cannot be made from the available information.",
       flaggedIngredients: []
     };
   }
 
-  const ingredientText = ingredients.toLowerCase();
+  const text = ingredients.toLowerCase();
 
-  // These matches require checking the actual label and ingredient source.
-  const potentialProhibitedRules = [
+  const potentiallyProhibitedRules = [
     { pattern: /\bpork\b/i, name: "Pork" },
     { pattern: /\bporcine\b/i, name: "Porcine-derived ingredient" },
     { pattern: /\blard\b/i, name: "Lard" },
@@ -112,41 +115,114 @@ function assessIngredients(ingredients) {
     { pattern: /\bbeer\b/i, name: "Beer" }
   ];
 
-  const potentialProhibited = findMatches(
-    ingredientText,
-    potentialProhibitedRules
+  const prohibitedMatches = findMatches(
+    text,
+    potentiallyProhibitedRules
   );
 
-  if (potentialProhibited.length > 0) {
+  if (prohibitedMatches.length > 0) {
     return {
       status: "POTENTIAL PROHIBITED INGREDIENT",
       explanation:
-        "The database lists a term associated with a potentially prohibited ingredient: " +
-        potentialProhibited.join(", ") +
-        ". Check the product label and ingredient source before making a final decision. This automated match is not a definitive religious ruling.",
-      flaggedIngredients: potentialProhibited
+        "The database lists a potentially prohibited ingredient term: " +
+        prohibitedMatches.join(", ") +
+        ". Check the actual packaging and ingredient source. This automated match is not a definitive religious ruling.",
+      flaggedIngredients: prohibitedMatches
     };
   }
 
-  const needsVerification = findMatches(
-    ingredientText,
-    verificationRules
-  );
+  const verificationMatches = findMatches(text, verificationRules);
 
-  if (needsVerification.length > 0) {
+  if (verificationMatches.length > 0) {
     return {
       status: "NEEDS VERIFICATION",
       explanation:
-        "One or more ingredients may depend on their source or processing method. Halal status has not been confirmed. Check the manufacturer or a reliable certification source.",
-      flaggedIngredients: needsVerification
+        "One or more ingredients may depend on their source or processing method. Their presence alone does not establish that the product is haram. Check with the manufacturer or a reliable halal certification source.",
+      flaggedIngredients: verificationMatches
     };
   }
 
   return {
-    status: "UNCERTAIN",
+    status: "NO OBVIOUS CONCERN DETECTED",
     explanation:
-      "The automated screen found no terms on its watchlist, but that does not prove the product is halal. The ingredient list and product-specific halal certification have not been independently verified.",
+      "The automated screen found no terms on its watchlist. This is not proof of halal status; the complete ingredients and product-specific certification still need verification.",
     flaggedIngredients: []
+  };
+}
+
+// Open Food Facts may report a halal label, but that alone does not
+// establish that a valid certificate has been independently checked.
+function assessCertification(product) {
+  const labels = Array.isArray(product.labels_tags)
+    ? product.labels_tags
+    : [];
+
+  const labelText = [
+    product.labels || "",
+    ...labels
+  ].join(" ").toLowerCase();
+
+  const hasHalalLabel =
+    /\bhalal\b/i.test(labelText) ||
+    labels.some((label) =>
+      /(^|:)halal($|:|-)/i.test(String(label))
+    );
+
+  if (hasHalalLabel) {
+    return {
+      status: "HALAL LABEL REPORTED — NOT VERIFIED",
+      evidence:
+        'The Open Food Facts product record reports a halal label. This is a database claim, not independent confirmation of a valid certificate. Check the packaging and the certifier’s official records.',
+      source: product.url || "Open Food Facts",
+      verified: false
+    };
+  }
+
+  return {
+    status: "NO VERIFIED CERTIFICATE FOUND",
+    evidence:
+      "No product-specific halal certificate has been verified by this app. The database may have incomplete label information, so this does not prove that the product is uncertified.",
+    source: product.url || "Open Food Facts",
+    verified: false
+  };
+}
+
+function buildAssessment(ingredients, certification) {
+  const screening = assessIngredients(ingredients);
+
+  // A database label is not enough to issue a verified halal verdict.
+  // A clear ingredient concern also cannot be dismissed merely because
+  // a database reports a halal label.
+  if (
+    screening.status === "POTENTIAL PROHIBITED INGREDIENT"
+  ) {
+    return {
+      status: "REVIEW REQUIRED",
+      explanation:
+        "A potentially prohibited ingredient term was detected. Check the actual ingredient source and any applicable certification before deciding."
+    };
+  }
+
+  if (screening.status === "INSUFFICIENT INFORMATION") {
+    return {
+      status: "CANNOT DETERMINE",
+      explanation:
+        "The ingredient list is missing. A product-specific halal certificate has not been independently verified."
+    };
+  }
+
+  if (screening.status === "NEEDS VERIFICATION") {
+    return {
+      status: "NEEDS VERIFICATION",
+      explanation:
+        "Some ingredients require source or processing checks. A database-reported halal label, if present, has not been independently verified."
+    };
+  }
+
+  return {
+    status: "NOT CONFIRMED",
+    explanation:
+      "No obvious concern was detected by the ingredient watchlist, but this app has not independently verified a valid halal certificate for this exact product."
   };
 }
 
@@ -178,18 +254,13 @@ app.get("/api/products", async (req, res) => {
     const url = new URL("https://world.openfoodfacts.net");
 
     if (isBarcode) {
-      // Barcode endpoint
       url.pathname =
         "/api/v2/product/" +
         encodeURIComponent(query) +
         ".json";
 
-      url.searchParams.set(
-        "fields",
-        "code,product_name,brands,quantity,countries,ingredients_text,ingredients_text_en,image_front_url,url"
-      );
+      url.searchParams.set("fields", PRODUCT_FIELDS);
     } else {
-      // Product-name search endpoint
       url.pathname = "/cgi/search.pl";
       url.searchParams.set("search_terms", query);
       url.searchParams.set("sort_by", "unique_scans_n");
@@ -197,27 +268,21 @@ app.get("/api/products", async (req, res) => {
       url.searchParams.set("action", "process");
       url.searchParams.set("json", "1");
       url.searchParams.set("page_size", "10");
-
-      url.searchParams.set(
-        "fields",
-        "code,product_name,brands,quantity,countries,ingredients_text,ingredients_text_en,image_front_url,url"
-      );
+      url.searchParams.set("fields", PRODUCT_FIELDS);
     }
 
     console.log("API request URL:", url.toString());
 
     const response = await fetch(url, {
       headers: {
-        "User-Agent": "HalalCheckAI/0.2 (product screening app)"
+        "User-Agent": "HalalCheckAI/0.3"
       },
-      signal: AbortSignal.timeout(10000)
+      signal: AbortSignal.timeout(15000)
     });
 
     if (!response.ok) {
-      const details = await response.text();
-
       throw new Error(
-        `Product database unavailable (HTTP ${response.status}): ${details.slice(0, 300)}`
+        `Product database returned HTTP ${response.status}`
       );
     }
 
@@ -234,13 +299,6 @@ app.get("/api/products", async (req, res) => {
       sourceProducts = data.products || [];
     }
 
-    console.log(
-      "API results:",
-      sourceProducts
-        .slice(0, 3)
-        .map((product) => product.product_name)
-    );
-
     const products = sourceProducts
       .filter((product) => product.product_name && product.code)
       .map((product) => {
@@ -250,6 +308,11 @@ app.get("/api/products", async (req, res) => {
           "";
 
         const halalScreening = assessIngredients(ingredients);
+        const certification = assessCertification(product);
+        const overallAssessment = buildAssessment(
+          ingredients,
+          certification
+        );
 
         return {
           barcode: product.code,
@@ -262,23 +325,29 @@ app.get("/api/products", async (req, res) => {
           sourceUrl: product.url || "",
 
           halalScreening,
+          certification,
+          overallAssessment,
 
-          // Do not claim a product is certified without product-specific
-          // evidence from a reliable source.
-          certification: {
-            status: "NOT VERIFIED",
-            evidence:
-              "No product-specific certificate lookup has been completed. The certification-body directory is informational only and does not prove that this product is certified."
-          }
+          dataLimitations: [
+            "Ingredient information comes from a public product database and may be incomplete or outdated.",
+            "A halal label reported by the database is not independent certificate verification.",
+            "This app has not yet connected to official product-specific certification registries."
+          ]
         };
       });
 
-    res.json({ query, products });
+    res.json({
+      query,
+      mode: isBarcode ? "barcode" : "name",
+      count: products.length,
+      products
+    });
   } catch (error) {
     console.error("PRODUCT API ERROR:", error);
 
     res.status(502).json({
-      error: "Could not retrieve products. Please try again."
+      error:
+        "Could not retrieve products right now. Please try again shortly."
     });
   }
 });
