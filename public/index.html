@@ -1,0 +1,611 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>HalalCheck AI</title>
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: Arial, sans-serif;
+      background: #f4f8f5;
+      color: #193b2b;
+      display: grid;
+      place-items: center;
+      padding: 24px;
+    }
+
+    main {
+      width: 100%;
+      max-width: 560px;
+      background: white;
+      padding: 32px 24px;
+      border-radius: 18px;
+      text-align: center;
+      box-shadow: 0 8px 30px #193b2b12;
+    }
+
+    .logo {
+      font-size: 44px;
+    }
+
+    h1 {
+      color: #16804a;
+      margin-bottom: 8px;
+    }
+
+    p {
+      line-height: 1.6;
+      color: #58675e;
+    }
+
+    input, button {
+      width: 100%;
+      padding: 14px;
+      font-size: 16px;
+      border-radius: 9px;
+    }
+
+    input {
+      border: 1px solid #cbd8cf;
+      margin: 18px 0 10px;
+    }
+
+    button {
+      border: none;
+      background: #16804a;
+      color: white;
+      font-weight: bold;
+      cursor: pointer;
+    }
+
+    button:hover {
+      background: #11683b;
+    }
+
+    #message {
+      margin-top: 20px;
+      overflow-wrap: anywhere;
+    }
+
+    .note {
+      font-size: 13px;
+      margin-top: 24px;
+    }
+  /* HalalCheck AI — visual refresh */
+:root {
+  --halal-green: #176b45;
+  --halal-dark: #10452f;
+  --halal-cream: #f7f8f2;
+  --halal-white: #ffffff;
+  --halal-text: #20352a;
+  --halal-muted: #64746a;
+  --halal-border: #e0e8e0;
+}
+
+body {
+  background: var(--halal-cream);
+  color: var(--halal-text);
+  font-family: Arial, Helvetica, sans-serif;
+  line-height: 1.6;
+}
+
+h1, h2, h3 {
+  color: var(--halal-dark);
+  line-height: 1.25;
+}
+
+input, select {
+  max-width: 100%;
+  padding: 12px 14px;
+  border: 1px solid var(--halal-border);
+  border-radius: 10px;
+  font: inherit;
+  background: var(--halal-white);
+  box-sizing: border-box;
+}
+
+input:focus, select:focus {
+  outline: 2px solid var(--halal-green);
+  outline-offset: 2px;
+}
+
+button {
+  padding: 12px 18px;
+  border: none;
+  border-radius: 10px;
+  background: var(--halal-green);
+  color: white;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 0.2s ease;
+}
+
+button:hover {
+  background: var(--halal-dark);
+}
+
+a {
+  color: var(--halal-green);
+  overflow-wrap: anywhere;
+}
+
+img {
+  max-width: 100%;
+  height: auto;
+}
+
+#results > *, #certificationBodies > * {
+  background: var(--halal-white);
+  border: 1px solid var(--halal-border);
+  border-radius: 14px;
+  padding: 18px;
+  margin: 14px 0;
+  overflow-wrap: anywhere;
+}
+
+#searchForm {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 12px;
+}
+
+#searchForm input {
+  flex: 1 1 200px;
+  min-width: 0;
+}
+
+#searchForm select {
+  flex: 0 1 180px;
+  min-width: 0;
+}
+
+#searchForm button {
+  flex: 0 0 auto;
+}
+
+@media (max-width: 600px) {
+  body {
+    padding: 12px;
+  }
+
+  #searchForm {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  #searchForm input,
+  #searchForm select,
+  #searchForm button {
+    width: 100%;
+    flex: auto;
+  }
+
+  #results > *, #certificationBodies > * {
+    padding: 14px;
+  }
+}
+h1 {
+  font-size: clamp(2rem, 5vw, 3.2rem);
+  font-weight: 800;
+  letter-spacing: -1.5px;
+  text-align: center;
+  margin-bottom: 12px;
+}
+
+h1::after {
+  content: "";
+  display: block;
+  width: 64px;
+  height: 4px;
+  margin: 12px auto 0;
+  border-radius: 10px;
+  background: #176b45;
+}
+</style>
+</head>
+<body>
+  <main>
+    <div class="logo">🌙</div>
+    <h1>HalalCheck AI</h1>
+    <p>
+      Make more informed food choices.
+      Search for a snack or food product to begin.
+    </p>
+
+    <form id="searchForm">
+  <label for="searchMode">Search by:</label>
+  <select id="searchMode">
+    <option value="name">Product Name</option>
+    <option value="barcode">Barcode</option>
+  </select>
+
+  <input
+    id="food"
+    type="text"
+    placeholder="Try Pringles..."
+    required
+    minlength="2"
+    maxlength="100"
+  >
+  <button type="submit">Check a Product</button>
+  <button type="button" id="scanBarcodeBtn">
+  Scan Barcode
+</button>
+<div id="scannerArea" hidden>
+  <p>Point your camera at the product barcode.</p>
+  <video
+    id="barcodeVideo"
+    style="width: 100%; max-width: 400px;"
+    autoplay
+    muted
+    playsinline
+  ></video>
+  <p id="scannerMessage">Camera scanner ready.</p>
+  <button type="button" id="stopScannerBtn">
+    Stop Scanner
+  </button>
+</div>
+</form>
+    <p id="message" role="status">
+      Your food search will be available soon.
+    </p>
+
+    <p class="note">
+      Product results will depend on available ingredient
+      information and reliable halal evidence.
+    </p>
+  </main>
+<script>
+const searchForm = document.getElementById("searchForm");
+const searchMode = document.getElementById("searchMode");
+const foodInput = document.getElementById("food")
+searchMode.addEventListener("change", function () {
+  if (searchMode.value === "barcode") {
+    foodInput.placeholder = "Enter an 8–14 digit barcode...";
+    foodInput.minLength = 8;
+    foodInput.maxLength = 14;
+    foodInput.inputMode = "numeric";
+  } else {
+    foodInput.placeholder = "Try Pringles...";
+    foodInput.minLength = 2;
+    foodInput.maxLength = 100;
+    foodInput.inputMode = "text";
+  }
+});
+
+searchForm.addEventListener("submit", async function (event) {
+  event.preventDefault();
+
+  const input = searchForm.querySelector("input");
+  const query = input.value.trim();
+
+  const mode = searchMode.value;
+
+if (mode === "barcode" && !/^\d{8,14}$/.test(query)) {
+  alert("Please enter a barcode containing 8 to 14 digits.");
+  return;
+}
+
+if (mode === "name" && query.length < 2) {
+  alert("Please enter a food or product name.");
+  return;
+}
+  const button = searchForm.querySelector('button[type="submit"]');
+  const originalText = button ? button.textContent : "";
+
+  if (button) {
+    button.disabled = true;
+    button.textContent = "Searching...";
+  }
+
+  try {
+    const response = await fetch(
+  "/api/products?q=" + encodeURIComponent(query) +
+  "&mode=" + encodeURIComponent(mode)
+);
+
+    const data = await response.json();
+
+    let results = document.getElementById("searchResults");
+
+    if (!results) {
+      results = document.createElement("section");
+      results.id = "searchResults";
+      results.style.marginTop = "24px";
+      searchForm.insertAdjacentElement("afterend", results);
+    }
+
+    results.replaceChildren();
+
+    const heading = document.createElement("h2");
+    heading.textContent = "Search results for: " + query;
+    results.appendChild(heading);
+
+    if (!response.ok) {
+      throw new Error(data.error || "Search failed.");
+    }
+
+    if (!data.products || data.products.length === 0) {
+      const message = document.createElement("p");
+      message.textContent =
+        "No matching products found. Try another name or check the spelling.";
+      results.appendChild(message);
+      return;
+    }
+
+    data.products.forEach(function (product) {
+      const card = document.createElement("article");
+      card.style.border = "1px solid #ddd";
+      card.style.borderRadius = "12px";
+      card.style.padding = "16px";
+      card.style.marginBottom = "12px";
+
+      const name = document.createElement("h3");
+      name.textContent = product.name;
+      card.appendChild(name);
+
+      if (product.brand) {
+        const brand = document.createElement("p");
+        brand.textContent = "Brand: " + product.brand;
+        card.appendChild(brand);
+const barcode = document.createElement("p");
+barcode.textContent = "Barcode: " + (product.barcode || "Not available");
+barcode.style.fontSize = "14px";
+barcode.style.color = "#555";
+card.appendChild(barcode);
+      }
+
+      if (product.quantity) {
+        const quantity = document.createElement("p");
+        quantity.textContent = "Size: " + product.quantity;
+        card.appendChild(quantity);
+      }
+
+      const ingredients = document.createElement("p");
+      ingredients.textContent = product.ingredients
+        ? "Ingredients: " + product.ingredients
+        : "Ingredients are not available in this database record.";
+      card.appendChild(ingredients);
+
+      const screening = product.halalScreening || {
+  status: "NOT YET VERIFIED",
+  explanation:
+    "Check the complete ingredient list and reliable halal certification evidence.",
+  flaggedIngredients: []
+};
+
+const status = document.createElement("p");
+status.textContent = "Ingredient screening: " + screening.status;
+status.style.fontWeight = "bold";
+status.style.marginTop = "12px";
+card.appendChild(status);
+
+const explanation = document.createElement("p");
+explanation.textContent = screening.explanation;
+card.appendChild(explanation);
+
+if (screening.flaggedIngredients &&
+    screening.flaggedIngredients.length > 0) {
+  const flagged = document.createElement("p");
+  flagged.textContent =
+    "Ingredients to review: " +
+    screening.flaggedIngredients.join(", ");
+  card.appendChild(flagged);
+}
+const certification = product.certification || {
+  status: "NOT VERIFIED",
+  evidence: "No verified halal certification record has been checked."
+};
+
+const certificationTitle = document.createElement("p");
+certificationTitle.textContent =
+  "Halal certification: " + certification.status;
+certificationTitle.style.fontWeight = "bold";
+card.appendChild(certificationTitle);
+
+const certificationEvidence = document.createElement("p");
+certificationEvidence.textContent = certification.evidence;
+card.appendChild(certificationEvidence);
+const officialChecks = document.createElement("div");
+officialChecks.style.marginTop = "12px";
+
+const officialTitle = document.createElement("p");
+officialTitle.textContent = "Check official halal registries:";
+officialTitle.style.fontWeight = "bold";
+officialChecks.appendChild(officialTitle);
+
+const malaysiaLink = document.createElement("a");
+malaysiaLink.textContent = "Malaysia — JAKIM";
+malaysiaLink.href = "https://www.halal.gov.my/";
+malaysiaLink.target = "_blank";
+malaysiaLink.rel = "noopener noreferrer";
+malaysiaLink.style.display = "block";
+officialChecks.appendChild(malaysiaLink);
+
+const indonesiaLink = document.createElement("a");
+indonesiaLink.textContent = "Indonesia — BPJPH";
+indonesiaLink.href = "https://halal.go.id/";
+indonesiaLink.target = "_blank";
+indonesiaLink.rel = "noopener noreferrer";
+indonesiaLink.style.display = "block";
+officialChecks.appendChild(indonesiaLink);
+
+const verificationNote = document.createElement("p");
+verificationNote.textContent =
+  "These links open official websites. HalalCheck AI has not automatically checked or verified this product in either registry.";
+verificationNote.style.fontSize = "13px";
+officialChecks.appendChild(verificationNote);
+
+card.appendChild(officialChecks);
+const disclaimer = document.createElement("p");
+disclaimer.textContent =
+  "This automated screen is not halal certification or a religious ruling.";
+disclaimer.style.fontSize = "13px";
+disclaimer.style.color = "#666";
+card.appendChild(disclaimer);
+
+      if (product.sourceUrl) {
+        const link = document.createElement("a");
+        link.href = product.sourceUrl;
+        link.textContent = "View original product record";
+        link.target = "_blank";
+        link.rel = "noopener noreferrer";
+        card.appendChild(link);
+      }
+
+      results.appendChild(card);
+    });
+  } catch (error) {
+    let results = document.getElementById("searchResults");
+
+    if (!results) {
+      results = document.createElement("section");
+      results.id = "searchResults";
+      searchForm.insertAdjacentElement("afterend", results);
+    }
+
+    results.textContent =
+      "We couldn't retrieve product information. Check that the server is running, then try again.";
+  } finally {
+    if (button) {
+      button.disabled = false;
+      button.textContent = originalText;
+    }
+  }
+});
+</script>```
+<section style="max-width:800px;margin:40px auto;padding:20px;font-family:Arial,sans-serif;">
+  <h2>International Halal Certification Bodies</h2>
+  <p>Explore official websites of halal certification organisations. Their inclusion here does not confirm recognition by every country or certification of any specific product.</p>
+
+  <div id="certificationDirectory">Loading directory...</div>
+</section>
+
+<script>
+fetch("/api/certification-bodies")
+  .then(response => {
+    if (!response.ok) {
+      throw new Error("Could not load directory");
+    }
+    return response.json();
+  })
+  .then(data => {
+    const directory =
+      document.getElementById("certificationDirectory");
+
+    directory.textContent = "";
+
+    data.bodies.forEach(body => {
+      const item = document.createElement("div");
+      item.style.padding = "12px";
+      item.style.marginBottom = "10px";
+      item.style.border = "1px solid #ddd";
+      item.style.borderRadius = "8px";
+
+      const name = document.createElement("h3");
+      name.textContent = body.name;
+
+      const country = document.createElement("p");
+      country.textContent = "Country: " + body.country;
+
+      const link = document.createElement("a");
+      link.textContent = "Visit official website";
+      link.href = body.website;
+      link.target = "_blank";
+      link.rel = "noopener noreferrer";
+
+      const recognition = document.createElement("p");
+recognition.textContent =
+  "Recognition status: " + body.recognitionStatus;
+
+const evidence = document.createElement("p");
+evidence.textContent = body.recognitionEvidence;
+
+const source = document.createElement("a");
+source.textContent = "View evidence source";
+source.href = body.evidenceSource;
+source.target = "_blank";
+source.rel = "noopener noreferrer";
+
+item.append(name, country, recognition, evidence, source, link);
+      directory.appendChild(item);
+    });
+  })
+  .catch(() => {
+    document.getElementById("certificationDirectory")
+      .textContent = "The directory could not be loaded. Please try again.";
+  });
+</script>
+  <script src="https://unpkg.com/@zxing/library@0.21.3/umd/index.min.js"></script>
+<script>
+  const scanButton = document.getElementById("scanBarcodeBtn");
+  const stopButton = document.getElementById("stopScannerBtn");
+  const scannerArea = document.getElementById("scannerArea");
+  const barcodeVideo = document.getElementById("barcodeVideo");
+  const scannerMessage = document.getElementById("scannerMessage");
+  let barcodeReader = null;
+
+  scanButton.addEventListener("click", async function () {
+    if (typeof ZXing === "undefined") {
+      scannerMessage.textContent =
+        "Scanner library could not load. Check your internet connection.";
+      scannerArea.hidden = false;
+      return;
+    }
+
+    scannerArea.hidden = false;
+    scannerMessage.textContent =
+      "Starting camera. Allow camera access if prompted.";
+
+    try {
+      barcodeReader = new ZXing.BrowserMultiFormatReader();
+
+      await barcodeReader.decodeFromVideoDevice(
+        undefined,
+        barcodeVideo,
+        function (result, error) {
+          if (result) {
+            const searchMode = document.getElementById("searchMode");
+            const foodInput = document.getElementById("food");
+
+            foodInput.value = result.getText();
+            searchMode.value = "barcode";
+            searchMode.dispatchEvent(new Event("change"));
+
+            barcodeReader.reset();
+            barcodeReader = null;
+            scannerArea.hidden = true;
+
+            document.getElementById("searchForm").requestSubmit();
+          }
+        }
+      );
+
+      scannerMessage.textContent =
+        "Camera active. Point it at a product barcode.";
+    } catch (error) {
+      scannerMessage.textContent =
+        "Could not start camera. Check camera permission and close other apps using it.";
+    }
+  });
+
+  stopButton.addEventListener("click", function () {
+    if (barcodeReader) {
+      barcodeReader.reset();
+      barcodeReader = null;
+    }
+
+    scannerArea.hidden = true;
+    scannerMessage.textContent = "Scanner stopped.";
+  });
+</script>
+</body>
+</html>
