@@ -204,18 +204,17 @@ let certificationEvidence =
   .filter(item => item.pattern.test(ingredientText))
   .map(item => item.name);
 
-        if (flaggedIngredients.length > 0) {
-          status = "NEEDS VERIFICATION";
-          explanation =
-            "One or more ingredients may require checking their source or processing method. This result does not establish that the product is haram.";
-        } else {
-          status = "NO OBVIOUS CONCERN DETECTED";
-          explanation =
-            "The automated screen found no terms on its watchlist. This is not proof of halal status; check certification and the complete product details.";
-        }
-      }
-    }
-
+       if (flaggedIngredients.length > 0) {
+  status = "HARAM";
+  explanation =
+    "A potential prohibited ingredient was detected: " +
+    flaggedIngredients.join(", ") +
+    ". Verify the product label and ingredient source before making a final decision.";
+} else {
+  status = "UNCERTAIN";
+  explanation =
+    "No obvious prohibited ingredient was detected by the automated screen, but halal status has not been confirmed. Check reliable halal certification and the complete ingredient list.";
+}
     return {
       barcode: p.code,
       name: p.product_name,
