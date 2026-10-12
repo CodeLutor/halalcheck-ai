@@ -383,7 +383,22 @@ card.appendChild(barcode);
 };
 
 const status = document.createElement("p");
-status.textContent = "Ingredient screening: " + screening.status;
+const verdictLabels = {
+  "POTENTIAL PROHIBITED INGREDIENT":
+    "Potentially Not Halal — a prohibited ingredient term was detected",
+  "NEEDS VERIFICATION":
+    "Needs Verification — an ingredient source needs checking",
+  "NO OBVIOUS CONCERN DETECTED":
+    "No Obvious Concern Detected — halal status is not confirmed",
+  "INSUFFICIENT INFORMATION":
+    "Cannot Determine — ingredient information is missing",
+  "NOT YET VERIFIED":
+    "Cannot Determine — screening is not available"
+};
+
+status.textContent =
+  "Halal Assessment: " +
+  (verdictLabels[screening.status] || screening.status);
 status.style.fontWeight = "bold";
 status.style.marginTop = "12px";
 card.appendChild(status);
