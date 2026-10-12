@@ -351,6 +351,20 @@ if (mode === "name" && query.length < 2) {
       const name = document.createElement("h3");
       name.textContent = product.name;
       card.appendChild(name);
+      const image = document.createElement("img");
+image.alt = product.name + " product image";
+image.style.width = "140px";
+image.style.height = "140px";
+image.style.objectFit = "contain";
+image.style.display = "block";
+image.style.margin = "12px auto";
+image.style.borderRadius = "8px";
+
+if (product.image) {
+  image.src = product.image;
+  image.onerror = () => image.remove();
+  card.appendChild(image);
+}
 
       if (product.brand) {
         const brand = document.createElement("p");
