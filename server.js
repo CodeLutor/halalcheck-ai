@@ -5,6 +5,8 @@ const PORT = process.env.PORT || 3000;
 
 app.use(express.static("public"));
 
+const OFF_BASE = "https://world.openfoodfacts.net";
+
 const PRODUCT_FIELDS = [
   "code",
   "product_name",
@@ -16,53 +18,57 @@ const PRODUCT_FIELDS = [
   "image_front_url",
   "url",
   "labels",
-  "labels_tags",
-  "ingredients_analysis_tags"
+  "labels_tags"
 ].join(",");
 
-// This is an informational directory, not a product certificate registry.
+// Official registry links. These are manual checks, not API results.
 const certificationBodies = [
-  {
-    name: "JAKIM",
-    country: "Malaysia",
-    website: "https://www.halal.gov.my/",
-    recognitionStatus: "NOT YET VERIFIED",
-    evidenceSource: "https://www.halal.gov.my/"
-  },
   {
     name: "BPJPH",
     country: "Indonesia",
-    website: "https://halal.go.id/",
-    recognitionStatus: "NOT YET VERIFIED",
-    evidenceSource: "https://halal.go.id/"
+    website: "https://bpjph.halal.go.id/",
+    searchUrl: "https://bpjph.halal.go.id/cari/sertifikat",
+    method: "OFFICIAL MANUAL SEARCH",
+    note: "Search by product name, business name or certificate number."
   },
   {
     name: "MUIS",
     country: "Singapore",
-    website: "https://www.muis.gov.sg/",
-    recognitionStatus: "NOT YET VERIFIED",
-    evidenceSource: "https://www.muis.gov.sg/"
+    website: "https://www.muis.gov.sg/halal/",
+    searchUrl: "https://halal.muis.gov.sg/halal/products",
+    method: "OFFICIAL MANUAL SEARCH",
+    note: "Search the MUIS certified-products directory."
+  },
+  {
+    name: "JAKIM",
+    country: "Malaysia",
+    website: "https://www.halal.gov.my/",
+    searchUrl: "https://www.halal.gov.my/",
+    method: "OFFICIAL WEBSITE",
+    note: "Use the official Malaysian halal information services."
   },
   {
     name: "IFANCA",
     country: "United States",
     website: "https://ifanca.org/",
-    recognitionStatus: "NOT YET VERIFIED",
-    evidenceSource: "https://ifanca.org/"
+    searchUrl: "https://ifanca.org/",
+    method: "OFFICIAL WEBSITE",
+    note: "Consult IFANCA for current product certification information."
   },
   {
     name: "Halal Food Authority",
     country: "United Kingdom",
     website: "https://halalfoodauthority.com/",
-    recognitionStatus: "NOT YET VERIFIED",
-    evidenceSource: "https://halalfoodauthority.com/"
+    searchUrl: "https://halalfoodauthority.com/",
+    method: "OFFICIAL WEBSITE",
+    note: "Consult the authority for product and certificate information."
   }
 ];
 
 app.get("/api/certification-bodies", (req, res) => {
   res.json({
     note:
-      "This directory lists certification organisations. It does not verify product-specific certificates or guarantee recognition in every country.",
+      "Official registry links are provided for manual checks. Listing a certification body does not verify a product certificate or recognition in another country.",
     bodies: certificationBodies
   });
 });
@@ -78,7 +84,7 @@ function assessIngredients(ingredients) {
     return {
       status: "INSUFFICIENT INFORMATION",
       explanation:
-        "The ingredient list is missing from the product database. A reliable assessment cannot be made from the available information.",
+        "No ingredient list is available in this product record. Check the packaging or manufacturer.",
       flaggedIngredients: []
     };
   }
@@ -115,143 +121,157 @@ function assessIngredients(ingredients) {
     { pattern: /\bbeer\b/i, name: "Beer" }
   ];
 
-  const prohibitedMatches = findMatches(
-    text,
-    potentiallyProhibitedRules
-  );
+  const prohibited = findMatches(text, potentiallyProhibitedRules);
 
-  if (prohibitedMatches.length > 0) {
+  if (prohibited.length) {
     return {
       status: "POTENTIAL PROHIBITED INGREDIENT",
       explanation:
         "The database lists a potentially prohibited ingredient term: " +
-        prohibitedMatches.join(", ") +
-        ". Check the actual packaging and ingredient source. This automated match is not a definitive religious ruling.",
-      flaggedIngredients: prohibitedMatches
+        prohibited.join(", ") +
+        ". Confirm the actual label and ingredient source before making a decision. This automated match is not a definitive religious ruling.",
+      flaggedIngredients: prohibited
     };
   }
 
-  const verificationMatches = findMatches(text, verificationRules);
+  const review = findMatches(text, verificationRules);
 
-  if (verificationMatches.length > 0) {
+  if (review.length) {
     return {
       status: "NEEDS VERIFICATION",
       explanation:
-        "One or more ingredients may depend on their source or processing method. Their presence alone does not establish that the product is haram. Check with the manufacturer or a reliable halal certification source.",
-      flaggedIngredients: verificationMatches
+        "Some ingredients may depend on their source or processing method. Check with the manufacturer or a reliable halal certifier.",
+      flaggedIngredients: review
     };
   }
 
   return {
     status: "NO OBVIOUS CONCERN DETECTED",
     explanation:
-      "The automated screen found no terms on its watchlist. This is not proof of halal status; the complete ingredients and product-specific certification still need verification.",
+      "The automated screen found no terms on its watchlist. This does not prove halal status; the full ingredient information and certification still need checking.",
     flaggedIngredients: []
   };
 }
 
-// Open Food Facts may report a halal label, but that alone does not
-// establish that a valid certificate has been independently checked.
-function assessCertification(product) {
-  const labels = Array.isArray(product.labels_tags)
-    ? product.labels_tags
-    : [];
-
-  const labelText = [
+function assessDatabaseLabels(product) {
+  const labels = [
     product.labels || "",
-    ...labels
-  ].join(" ").toLowerCase();
+    ...(Array.isArray(product.labels_tags)
+      ? product.labels_tags
+      : [])
+  ].join(" ");
 
-  const hasHalalLabel =
-    /\bhalal\b/i.test(labelText) ||
-    labels.some((label) =>
-      /(^|:)halal($|:|-)/i.test(String(label))
-    );
+  const reportsHalal = /\bhalal\b/i.test(labels);
 
-  if (hasHalalLabel) {
+  if (reportsHalal) {
     return {
       status: "HALAL LABEL REPORTED — NOT VERIFIED",
       evidence:
-        'The Open Food Facts product record reports a halal label. This is a database claim, not independent confirmation of a valid certificate. Check the packaging and the certifier’s official records.',
-      source: product.url || "Open Food Facts",
+        "Open Food Facts reports a halal label for this product. This database label has not been independently verified against an official certificate.",
       verified: false
     };
   }
 
   return {
-    status: "NO VERIFIED CERTIFICATE FOUND",
+    status: "NOT VERIFIED",
     evidence:
-      "No product-specific halal certificate has been verified by this app. The database may have incomplete label information, so this does not prove that the product is uncertified.",
-    source: product.url || "Open Food Facts",
+      "No halal certificate has been independently verified by HalalCheck AI. Missing database information does not prove that the product is uncertified.",
     verified: false
   };
 }
 
-function buildAssessment(ingredients, certification) {
-  const screening = assessIngredients(ingredients);
-
-  // A database label is not enough to issue a verified halal verdict.
-  // A clear ingredient concern also cannot be dismissed merely because
-  // a database reports a halal label.
+function buildOverallAssessment(ingredientScreening) {
   if (
-    screening.status === "POTENTIAL PROHIBITED INGREDIENT"
+    ingredientScreening.status ===
+    "POTENTIAL PROHIBITED INGREDIENT"
   ) {
     return {
       status: "REVIEW REQUIRED",
       explanation:
-        "A potentially prohibited ingredient term was detected. Check the actual ingredient source and any applicable certification before deciding."
+        "A potentially prohibited ingredient term was found. Verify its source and check applicable certification before deciding."
     };
   }
 
-  if (screening.status === "INSUFFICIENT INFORMATION") {
+  if (
+    ingredientScreening.status === "INSUFFICIENT INFORMATION"
+  ) {
     return {
       status: "CANNOT DETERMINE",
       explanation:
-        "The ingredient list is missing. A product-specific halal certificate has not been independently verified."
+        "Ingredient information is missing and product-specific certification has not been independently verified."
     };
   }
 
-  if (screening.status === "NEEDS VERIFICATION") {
+  if (ingredientScreening.status === "NEEDS VERIFICATION") {
     return {
       status: "NEEDS VERIFICATION",
       explanation:
-        "Some ingredients require source or processing checks. A database-reported halal label, if present, has not been independently verified."
+        "At least one ingredient needs further checking. Halal certification has not been independently verified."
     };
   }
 
   return {
     status: "NOT CONFIRMED",
     explanation:
-      "No obvious concern was detected by the ingredient watchlist, but this app has not independently verified a valid halal certificate for this exact product."
+      "No obvious concern was detected by the ingredient watchlist, but halal status is not confirmed without reliable product-specific evidence."
   };
+}
+
+function makeRegistryChecks(productName, brand) {
+  const searchTerm = [brand, productName]
+    .filter(Boolean)
+    .join(" ")
+    .trim();
+
+  const bodies = certificationBodies.map((body) => {
+    let searchUrl = body.searchUrl;
+
+    // BPJPH's official portal supports a product-name query.
+    if (body.name === "BPJPH" && searchTerm) {
+      searchUrl =
+        "https://bpjph.halal.go.id/cari/sertifikat?produk=" +
+        encodeURIComponent(searchTerm);
+    }
+
+    return {
+      name: body.name,
+      country: body.country,
+      website: body.website,
+      searchUrl,
+      method: body.method,
+      status: "MANUAL CHECK REQUIRED",
+      note: body.note
+    };
+  });
+
+  return bodies;
 }
 
 app.get("/api/products", async (req, res) => {
   const query = String(req.query.q || "").trim();
-
-  console.log(
-    "Product search query:",
-    query,
-    "| Mode:",
-    req.query.mode
-  );
+  const mode = String(req.query.mode || "auto");
 
   const isBarcode =
-    req.query.mode === "barcode"
+    mode === "barcode"
       ? true
-      : req.query.mode === "name"
+      : mode === "name"
       ? false
       : /^\d{8,14}$/.test(query);
 
-  if (query.length < 2 || query.length > 100) {
+  if (
+    query.length < 2 ||
+    query.length > 100 ||
+    (isBarcode && !/^\d{8,14}$/.test(query))
+  ) {
     return res.status(400).json({
-      error:
-        "Enter a product name or barcode between 2 and 100 characters."
+      error: isBarcode
+        ? "Enter a barcode containing 8 to 14 digits."
+        : "Enter a product name between 2 and 100 characters."
     });
   }
 
   try {
-    const url = new URL("https://world.openfoodfacts.net");
+    const url = new URL(OFF_BASE);
 
     if (isBarcode) {
       url.pathname =
@@ -271,67 +291,59 @@ app.get("/api/products", async (req, res) => {
       url.searchParams.set("fields", PRODUCT_FIELDS);
     }
 
-    console.log("API request URL:", url.toString());
-
     const response = await fetch(url, {
       headers: {
-        "User-Agent": "HalalCheckAI/0.3"
+        "User-Agent": "HalalCheckAI/1.0"
       },
       signal: AbortSignal.timeout(15000)
     });
 
     if (!response.ok) {
       throw new Error(
-        `Product database returned HTTP ${response.status}`
+        "Open Food Facts returned HTTP " + response.status
       );
     }
 
     const data = await response.json();
 
-    let sourceProducts;
-
-    if (isBarcode) {
-      sourceProducts =
-        data.status === 1 && data.product
-          ? [data.product]
-          : [];
-    } else {
-      sourceProducts = data.products || [];
-    }
+    const sourceProducts = isBarcode
+      ? data.status === 1 && data.product
+        ? [data.product]
+        : []
+      : data.products || [];
 
     const products = sourceProducts
-      .filter((product) => product.product_name && product.code)
-      .map((product) => {
+      .filter((p) => p.product_name && p.code)
+      .map((p) => {
         const ingredients =
-          product.ingredients_text_en ||
-          product.ingredients_text ||
-          "";
+          p.ingredients_text_en || p.ingredients_text || "";
 
         const halalScreening = assessIngredients(ingredients);
-        const certification = assessCertification(product);
-        const overallAssessment = buildAssessment(
-          ingredients,
-          certification
-        );
+        const certification = assessDatabaseLabels(p);
+        const overallAssessment =
+          buildOverallAssessment(halalScreening);
 
         return {
-          barcode: product.code,
-          name: product.product_name,
-          brand: product.brands || "",
-          quantity: product.quantity || "",
-          countries: product.countries || "",
+          barcode: p.code,
+          name: p.product_name,
+          brand: p.brands || "",
+          quantity: p.quantity || "",
+          countries: p.countries || "",
           ingredients,
-          image: product.image_front_url || "",
-          sourceUrl: product.url || "",
-
+          image: p.image_front_url || "",
+          sourceUrl: p.url || "",
           halalScreening,
           certification,
           overallAssessment,
-
+          registryChecks: makeRegistryChecks(
+            p.product_name,
+            p.brands || ""
+          ),
           dataLimitations: [
-            "Ingredient information comes from a public product database and may be incomplete or outdated.",
-            "A halal label reported by the database is not independent certificate verification.",
-            "This app has not yet connected to official product-specific certification registries."
+            "Product and ingredient data may be incomplete or outdated.",
+            "A database-reported halal label is not independent certificate verification.",
+            "Official registry links require the user to check the relevant record.",
+            "No worldwide certification API has been connected yet."
           ]
         };
       });
@@ -343,17 +355,15 @@ app.get("/api/products", async (req, res) => {
       products
     });
   } catch (error) {
-    console.error("PRODUCT API ERROR:", error);
+    console.error("Product lookup failed:", error.message);
 
     res.status(502).json({
       error:
-        "Could not retrieve products right now. Please try again shortly."
+        "Product information is temporarily unavailable. Please try again."
     });
   }
 });
 
 app.listen(PORT, "0.0.0.0", () => {
-  console.log(
-    `HalalCheck AI is running at http://localhost:${PORT}`
-  );
+  console.log("HalalCheck AI running on port " + PORT);
 });
